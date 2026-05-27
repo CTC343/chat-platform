@@ -1,19 +1,18 @@
 {
   "version": 2,
   "builds": [
-    {
-      "src": "api/index.py",
-      "use": "@vercel/python"
-    }
+    { "src": "api/index.py", "use": "@vercel/python" }
   ],
   "routes": [
-    { "src": "/(css/.*)", "dest": "/public/$1" },
-    { "src": "/(js/.*)", "dest": "/public/$1" },
-    { "src": "/(assets/.*)", "dest": "/public/$1" },
-    { "src": "/(favicon.*)", "dest": "/public/$1" },
-    { "src": "/(icon.*)", "dest": "/public/$1" },
-    { "src": "/(manifest.*)", "dest": "/public/$1" },
-    { "src": "/(sw.*)", "dest": "/public/$1" },
-    { "src": "/(.*)", "dest": "/api/index.py" }
+    { "src": "/api/(.*)", "dest": "/api/index.py" },
+    { "src": "/users/(.*)", "dest": "/api/index.py" },
+    { "src": "/messages/(.*)", "dest": "/api/index.py" },
+    { "src": "/health", "dest": "/api/index.py" },
+    { "src": "/css/(.*)", "dest": "/public/css/$1" },
+    { "src": "/js/(.*)", "dest": "/public/js/$1" },
+    { "src": "/(.+\.(css|js|svg|json|png|ico))", "dest": "/public/$1" },
+    { "src": "/chat.html", "dest": "/public/chat.html" },
+    { "src": "/admin.html", "dest": "/public/admin.html" },
+    { "src": "/", "dest": "/public/index.html" }
   ]
 }
