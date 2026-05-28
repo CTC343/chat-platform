@@ -5,6 +5,7 @@ let isPrivateMode = false;
 let messagePollingInterval = null;
 
 // 页面加载时初始化
+window._firstLoad = true;
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     currentUser = await api.getCurrentUser();
@@ -44,6 +45,9 @@ function renderMessages(messages) {
   const container = document.getElementById('messages-container');
   const noMessages = document.getElementById('no-messages');
   
+  // 判断用户是否在底部附近（距底部100px内）
+  const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+  
   if (messages.length === 0) {
     noMessages.style.display = 'flex';
     container.innerHTML = '';
@@ -62,8 +66,11 @@ function renderMessages(messages) {
     container.appendChild(messageEl);
   });
   
-  // 滚动到底部
-  container.scrollTop = container.scrollHeight;
+  // 只有在底部附近时才自动滚动
+  if (isNearBottom || window._firstLoad) {
+    container.scrollTop = container.scrollHeight;
+    window._firstLoad = false;
+  }
 }
 
 // 创建消息元素
