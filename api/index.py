@@ -371,3 +371,6 @@ async def admin_delete_message(message_id: int, db: Session = Depends(get_db), a
     db.delete(msg)
     db.commit()
     return {"message": "消息删除成功"}
+
+# Vercel handler
+handler = app
