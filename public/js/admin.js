@@ -20,13 +20,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 // 加载数据
 async function loadData() {
   await Promise.all([
-    loadPendingUsers(),
+    loadAllUsers(),
     loadAllMessages()
   ]);
 }
 
-// 加载待审核用户
-async function loadPendingUsers() {
+// 加载所有用户
+async function loadAllUsers() {
   try {
     const users = await api.getPendingUsers();
     document.getElementById('pending-count').textContent = users.length;
@@ -56,18 +56,34 @@ async function loadPendingUsers() {
 function createUserCard(user) {
   const div = document.createElement('div');
   div.className = 'user-card';
+  
+  const statusBadge = user.status === 'approved' ? 
+    '<span class="status-badge approved">已通过</span>' : 
+    user.status === 'pending' ? 
+    '<span class="status-badge pending">待审核</span>' : 
+    '<span class="status-badge rejected">已拒绝</span>';
+  
+  const mutedBadge = user.muted ? '<span class="status-badge muted">已禁言</span>' : '';
+  
   div.innerHTML = `
-    <div class="user-card-info">
+    <div class="user-card-info" onclick="viewUserMessages(${user.id}, '${escapeHtml(user.nickname)}')" style="cursor:pointer">
       <div class="user-card-avatar">${user.nickname.charAt(0).toUpperCase()}</div>
       <div class="user-card-details">
-        <h3>${escapeHtml(user.nickname)}</h3>
-        <p>用户名: ${escapeHtml(user.username)}</p>
+        <h3>${escapeHtml(user.nickname)} ${statusBadge} ${mutedBadge}</h3>
+        <p>用户名: ${escapeHtml(user.username)} | 角色: ${user.role === 'admin' ? '管理员' : '用户'}</p>
         <p>注册时间: ${formatDateTime(user.created_at)}</p>
       </div>
     </div>
     <div class="user-actions">
-      <button class="btn btn-primary btn-sm" onclick="approveUser(${user.id}, 'approved')">通过</button>
-      <button class="btn btn-danger btn-sm" onclick="approveUser(${user.id}, 'rejected')">拒绝</button>
+      ${user.status === 'pending' ? `
+        <button class="btn btn-primary btn-sm" onclick="approveUser(${user.id}, 'approved')">通过</button>
+        <button class="btn btn-danger btn-sm" onclick="approveUser(${user.id}, 'rejected')">拒绝</button>
+      ` : ''}
+      ${user.role !== 'admin' ? `
+        <button class="btn btn-warning btn-sm" onclick="muteUser(${user.id}, ${user.muted ? 0 : 1})">${user.muted ? '解禁' : '禁言'}</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteUser(${user.id}, '${escapeHtml(user.username)}')">注销</button>
+      ` : ''}
+      <button class="btn btn-secondary btn-sm" onclick="viewUserMessages(${user.id}, '${escapeHtml(user.nickname)}')">查看发言</button>
     </div>
   `;
   return div;
@@ -78,9 +94,65 @@ async function approveUser(userId, status) {
   try {
     await api.approveUser(userId, status);
     alert(`用户已${status === 'approved' ? '审核通过' : '拒绝'}`);
-    await loadPendingUsers();
+    await loadAllUsers();
   } catch (error) {
     alert('审核失败: ' + error.message);
+  }
+}
+
+// 禁言/解禁用户
+async function muteUser(userId, muted) {
+  try {
+    await api.muteUser(userId, muted);
+    alert(muted ? '用户已被禁言' : '用户已被解禁');
+    await loadAllUsers();
+  } catch (error) {
+    alert('操作失败: ' + error.message);
+  }
+}
+
+// 注销用户
+async function deleteUser(userId, username) {
+  if (!confirm(`确定要注销用户 "${username}" 吗？\n该操作将删除该用户的所有消息！`)) return;
+  
+  try {
+    const result = await api.deleteUser(userId);
+    alert(result.message);
+    await loadAllUsers();
+    await loadAllMessages();
+  } catch (error) {
+    alert('注销失败: ' + error.message);
+  }
+}
+
+// 查看用户消息
+async function viewUserMessages(userId, nickname) {
+  try {
+    const messages = await api.getUserMessages(userId);
+    
+    const messagesList = document.getElementById('messages-list');
+    const noMessages = document.getElementById('no-messages');
+    
+    // 切换到消息标签
+    switchTab('messages');
+    document.getElementById('tab-messages').textContent = `${nickname} 的发言 (${messages.length})`;
+    
+    if (messages.length === 0) {
+      noMessages.style.display = 'block';
+      noMessages.textContent = `${nickname} 暂无发言`;
+      messagesList.innerHTML = '';
+      return;
+    }
+    
+    noMessages.style.display = 'none';
+    messagesList.innerHTML = '';
+    
+    messages.forEach(message => {
+      const card = createMessageCard(message);
+      messagesList.appendChild(card);
+    });
+  } catch (error) {
+    alert('获取消息失败: ' + error.message);
   }
 }
 
@@ -120,11 +192,12 @@ function createMessageCard(message) {
   if (message.message_type === 'text') {
     contentHtml = `<p>${escapeHtml(message.content)}</p>`;
   } else {
+    const fileUrl = api.getFileUrl(message.id);
     contentHtml = `
       <div class="file-card-info">
         <span class="file-type">${message.message_type}</span>
         <span class="file-card-name">${escapeHtml(message.content)}</span>
-        ${message.file_path ? `<a href="/storage/${message.file_path.split('/').pop()}" target="_blank" class="file-link">查看文件</a>` : ''}
+        <a href="${fileUrl}" target="_blank" class="file-link">查看文件</a>
       </div>
     `;
   }
@@ -168,6 +241,11 @@ function switchTab(tab) {
   document.getElementById('tab-messages').classList.toggle('active', tab === 'messages');
   document.getElementById('users-section').style.display = tab === 'users' ? 'block' : 'none';
   document.getElementById('messages-section').style.display = tab === 'messages' ? 'block' : 'none';
+  
+  // 重置消息标签文本
+  if (tab === 'users') {
+    document.getElementById('tab-messages').innerHTML = '所有消息 (<span id="message-count">0</span>)';
+  }
 }
 
 // 格式化日期时间

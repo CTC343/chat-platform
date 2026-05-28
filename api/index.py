@@ -41,6 +41,7 @@ class User(Base):
     avatar = Column(String(500), nullable=True)
     status = Column(String(20), default="pending")
     role = Column(String(20), default="user")
+    muted = Column(Integer, default=0)  # 0=正常, 1=禁言
     created_at = Column(DateTime, server_default=func.now())
 
 class Message(Base):
@@ -282,30 +283,6 @@ async def get_messages(limit: int = 50, db: Session = Depends(get_db), user: Use
         })
     return result
 
-@app.post("/messages/send")
-async def send_message(msg: MessageCreate, db: Session = Depends(get_db), user: User = Depends(get_active_user)):
-    if msg.visibility == "private" and msg.receiver_id:
-        receiver = db.query(User).filter(User.id == msg.receiver_id).first()
-        if not receiver:
-            raise HTTPException(404, "接收用户不存在")
-    db_msg = Message(
-        sender_id=user.id,
-        receiver_id=msg.receiver_id if msg.visibility == "private" else None,
-        content=msg.content,
-        message_type=msg.message_type,
-        visibility=msg.visibility
-    )
-    db.add(db_msg)
-    db.commit()
-    db.refresh(db_msg)
-    return {
-        "id": db_msg.id, "sender_id": db_msg.sender_id, "receiver_id": db_msg.receiver_id,
-        "content": db_msg.content, "message_type": db_msg.message_type,
-        "file_path": db_msg.file_path, "visibility": db_msg.visibility,
-        "created_at": str(db_msg.created_at),
-        "sender": {"id": user.id, "username": user.username, "nickname": user.nickname, "status": user.status, "role": user.role}
-    }
-
 @app.post("/messages/upload")
 async def upload_file(file: UploadFile = File(...), visibility: str = "public", receiver_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_active_user)):
     content = await file.read()
@@ -338,16 +315,6 @@ async def upload_file(file: UploadFile = File(...), visibility: str = "public", 
         "sender": {"id": user.id, "username": user.username, "nickname": user.nickname, "status": user.status, "role": user.role}
     }
 
-@app.get("/messages/file/{message_id}")
-async def get_file(message_id: int, db: Session = Depends(get_db), user: User = Depends(get_active_user)):
-    msg = db.query(Message).filter(Message.id == message_id).first()
-    if not msg or not msg.file_data:
-        raise HTTPException(404, "文件不存在")
-    file_content = base64.b64decode(msg.file_data)
-    content_types = {"image": "image/jpeg", "video": "video/mp4", "audio": "audio/mpeg", "file": "application/octet-stream"}
-    ct = content_types.get(msg.message_type, "application/octet-stream")
-    return Response(content=file_content, media_type=ct)
-
 @app.get("/messages/admin/all")
 async def admin_all_messages(db: Session = Depends(get_db), admin: User = Depends(get_admin)):
     messages = db.query(Message).order_by(Message.created_at.desc()).all()
@@ -371,6 +338,131 @@ async def admin_delete_message(message_id: int, db: Session = Depends(get_db), a
     db.delete(msg)
     db.commit()
     return {"message": "消息删除成功"}
+
+# ========== 新增功能 ==========
+
+# 获取所有已审核用户（用于私密消息选择）
+@app.get("/users/all")
+async def get_all_users(db: Session = Depends(get_db), user: User = Depends(get_active_user)):
+    users = db.query(User).filter(User.status == "approved").all()
+    return [{"id": u.id, "username": u.username, "nickname": u.nickname, "avatar": u.avatar, "role": u.role, "muted": u.muted} for u in users]
+
+# 禁言/解禁用户（管理员）
+@app.post("/users/mute")
+async def mute_user(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_admin)):
+    user_id = data.get("user_id")
+    muted = data.get("muted", 1)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "用户不存在")
+    if user.role == "admin":
+        raise HTTPException(400, "不能禁言管理员")
+    user.muted = muted
+    db.commit()
+    return {"id": user.id, "username": user.username, "nickname": user.nickname, "muted": user.muted}
+
+# 注销用户（管理员）
+@app.post("/users/delete")
+async def delete_user(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_admin)):
+    user_id = data.get("user_id")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "用户不存在")
+    if user.role == "admin":
+        raise HTTPException(400, "不能注销管理员")
+    # 删除该用户的所有消息
+    db.query(Message).filter(Message.sender_id == user_id).delete()
+    db.delete(user)
+    db.commit()
+    return {"message": f"用户 {user.username} 已注销"}
+
+# 获取指定用户的消息（管理员查看）
+@app.get("/messages/user/{user_id}")
+async def get_user_messages(user_id: int, db: Session = Depends(get_db), admin: User = Depends(get_admin)):
+    messages = db.query(Message).filter(Message.sender_id == user_id).order_by(Message.created_at.desc()).all()
+    result = []
+    for m in messages:
+        sender = db.query(User).filter(User.id == m.sender_id).first()
+        result.append({
+            "id": m.id, "sender_id": m.sender_id, "receiver_id": m.receiver_id,
+            "content": m.content, "message_type": m.message_type,
+            "file_path": m.file_path, "visibility": m.visibility,
+            "created_at": str(m.created_at),
+            "sender": {"id": sender.id, "username": sender.username, "nickname": sender.nickname, "status": sender.status, "role": sender.role}
+        })
+    return result
+
+# 获取自己的所有发言
+@app.get("/messages/my")
+async def get_my_messages(db: Session = Depends(get_db), user: User = Depends(get_active_user)):
+    messages = db.query(Message).filter(Message.sender_id == user.id).order_by(Message.created_at.desc()).all()
+    result = []
+    for m in messages:
+        result.append({
+            "id": m.id, "sender_id": m.sender_id, "receiver_id": m.receiver_id,
+            "content": m.content, "message_type": m.message_type,
+            "file_path": m.file_path, "visibility": m.visibility,
+            "created_at": str(m.created_at)
+        })
+    return result
+
+# 用户自行注销（显示彩蛋）
+@app.post("/users/self-delete")
+async def self_delete(user: User = Depends(get_active_user)):
+    return {"message": "进来了还想走？", "code": "no_exit"}
+
+# 文件下载支持 token 参数
+@app.get("/messages/file/{message_id}")
+async def get_file(message_id: int, token: Optional[str] = None, db: Session = Depends(get_db)):
+    # 支持从 query 参数或 header 获取 token
+    if token:
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            username = payload.get("sub")
+            if not username:
+                raise HTTPException(401, "无效的Token")
+        except JWTError:
+            raise HTTPException(401, "无效的Token")
+    
+    msg = db.query(Message).filter(Message.id == message_id).first()
+    if not msg or not msg.file_data:
+        raise HTTPException(404, "文件不存在")
+    file_content = base64.b64decode(msg.file_data)
+    content_types = {"image": "image/jpeg", "video": "video/mp4", "audio": "audio/mpeg", "file": "application/octet-stream"}
+    ct = content_types.get(msg.message_type, "application/octet-stream")
+    filename = msg.content or "download"
+    return Response(
+        content=file_content, 
+        media_type=ct,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'}
+    )
+
+# 发送消息时检查禁言
+@app.post("/messages/send")
+async def send_message(msg: MessageCreate, db: Session = Depends(get_db), user: User = Depends(get_active_user)):
+    if user.muted:
+        raise HTTPException(403, "你已被禁言，无法发送消息")
+    if msg.visibility == "private" and msg.receiver_id:
+        receiver = db.query(User).filter(User.id == msg.receiver_id).first()
+        if not receiver:
+            raise HTTPException(404, "接收用户不存在")
+    db_msg = Message(
+        sender_id=user.id,
+        receiver_id=msg.receiver_id if msg.visibility == "private" else None,
+        content=msg.content,
+        message_type=msg.message_type,
+        visibility=msg.visibility
+    )
+    db.add(db_msg)
+    db.commit()
+    db.refresh(db_msg)
+    return {
+        "id": db_msg.id, "sender_id": db_msg.sender_id, "receiver_id": db_msg.receiver_id,
+        "content": db_msg.content, "message_type": db_msg.message_type,
+        "file_path": db_msg.file_path, "visibility": db_msg.visibility,
+        "created_at": str(db_msg.created_at),
+        "sender": {"id": user.id, "username": user.username, "nickname": user.nickname, "status": user.status, "role": user.role}
+    }
 
 # Vercel handler
 handler = app

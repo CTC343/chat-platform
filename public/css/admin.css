@@ -200,6 +200,44 @@
   font-size: 0.875rem;
 }
 
+.btn-warning {
+  background-color: #f59e0b;
+  color: white;
+}
+
+.btn-warning:hover {
+  background-color: #d97706;
+}
+
+/* 状态标签 */
+.status-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.status-badge.approved {
+  background-color: #10b981;
+  color: white;
+}
+
+.status-badge.pending {
+  background-color: #f59e0b;
+  color: white;
+}
+
+.status-badge.rejected {
+  background-color: #ef4444;
+  color: white;
+}
+
+.status-badge.muted {
+  background-color: #6b7280;
+  color: white;
+}
+
 /* 响应式 */
 @media (max-width: 768px) {
   .admin-container {

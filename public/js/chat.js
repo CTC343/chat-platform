@@ -177,7 +177,7 @@ async function uploadFile(e) {
 // 加载用户列表
 async function loadUsers() {
   try {
-    const users = await api.getPendingUsers();
+    const users = await api.getAllUsers();
     renderUsers(users.filter(u => u.id !== currentUser.id));
   } catch (error) {
     console.error('加载用户列表失败:', error);
@@ -266,4 +266,56 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+// 确认退出登录
+function confirmLogout() {
+  alert('进来了还想走？');
+  setTimeout(() => {
+    api.logout();
+  }, 1000);
+}
+
+// 显示我的发言
+async function showMyMessages() {
+  try {
+    const messages = await api.getMyMessages();
+    const container = document.getElementById('messages-container');
+    const noMessages = document.getElementById('no-messages');
+    
+    document.getElementById('chat-title').textContent = '📜 我的所有发言';
+    document.getElementById('private-indicator').style.display = 'none';
+    
+    if (messages.length === 0) {
+      noMessages.style.display = 'flex';
+      noMessages.querySelector('p').textContent = '你还没有发过消息';
+      container.innerHTML = '';
+      container.appendChild(noMessages);
+      return;
+    }
+    
+    noMessages.style.display = 'none';
+    container.innerHTML = '';
+    container.appendChild(noMessages);
+    
+    messages.forEach(message => {
+      const div = document.createElement('div');
+      div.className = 'message own';
+      div.style.opacity = '0.8';
+      div.innerHTML = `
+        <div class="message-content" style="margin-left:0">
+          <div class="message-header">
+            <span class="message-time">${formatTime(message.created_at)}</span>
+            <span class="private-badge">${message.visibility === 'private' ? '私密' : '公开'}</span>
+          </div>
+          <div class="message-text">${escapeHtml(message.content)}</div>
+        </div>
+      `;
+      container.appendChild(div);
+    });
+    
+    container.scrollTop = container.scrollHeight;
+  } catch (error) {
+    alert('获取发言失败: ' + error.message);
+  }
 }
