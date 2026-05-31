@@ -76,6 +76,44 @@ docker-compose up -d
 docker-compose logs -f
 ```
 
+### 方式四：公网访问（让外网也能用）
+
+用 Cloudflare Tunnel 把本地服务器暴露到公网，无需买服务器：
+
+```bash
+# 1. 先启动聊天服务器（窗口1）
+start.bat
+
+# 2. 再开一个终端，启动隧道（窗口2）
+cloudflared tunnel --url http://localhost:8000
+```
+
+启动后终端会显示公网地址：
+```
+Your quick Tunnel has been created! Visit it at:
+https://xxx-xxx.trycloudflare.com  👈 这就是公网地址
+```
+
+把这个地址发给别人，任何人都能访问你的聊天室！
+
+#### 安装 cloudflared
+
+```bash
+# Windows (winget)
+winget install Cloudflare.cloudflared
+
+# Windows (scoop)
+scoop install cloudflared
+
+# Mac
+brew install cloudflare/cloudflare/cloudflared
+
+# Linux
+# 下载 https://github.com/cloudflare/cloudflared/releases
+```
+
+> ⚠️ 免费隧道地址每次重启会变，适合临时使用。长期使用建议绑定固定域名。
+
 ## 🔑 默认账号
 
 - **管理员**: admin / admin123456
