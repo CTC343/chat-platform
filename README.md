@@ -1,6 +1,6 @@
 # 多人聊天平台
 
-一个简单的多人聊天系统，支持网页版和Windows桌面版。
+一个简单的多人聊天系统，支持网页版、Windows桌面版和安卓App。
 
 ## ✨ 功能特性
 
@@ -11,12 +11,14 @@
 - 👑 管理员系统（审核用户、删除消息、查看所有数据）
 - 🧹 自动清理机制（超过10GB自动删除旧文件）
 - 🖥️ Electron桌面版支持
+- 📱 安卓App支持（WebView封装）
 
 ## 🛠️ 技术栈
 
 - **后端**: Python + FastAPI + SQLAlchemy + SQLite
 - **前端**: 原生HTML/CSS/JavaScript（无需npm）
 - **桌面版**: Electron
+- **安卓版**: WebView封装（原生Android项目）
 - **UI**: 深色模式，类似Discord风格
 - **容器化**: Docker支持
 
@@ -57,7 +59,7 @@ source venv/bin/activate
 # 4. 安装依赖
 pip install -r requirements.txt
 
-# 5. 启动服务器
+# 5. 启动服务器（默认端口8000，可自定义）
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
@@ -100,7 +102,11 @@ docker-compose logs -f
 │   ├── main.js           # 主进程
 │   ├── index.html        # 桌面应用页面
 │   └── package.json      # Electron配置
-├── storage/              # 文件存储目录
+├── android-app/          # 安卓App（WebView封装）
+│   ├── app/              # Android应用代码
+│   ├── build.gradle      # Gradle构建配置
+│   └── build.sh          # 构建脚本
+├── storage/              # 文件存储目录（自动创建）
 ├── Dockerfile            # Docker配置
 ├── docker-compose.yml    # Docker编排
 ├── start.bat             # Windows启动脚本
@@ -137,6 +143,144 @@ docker-compose logs -f
 - **网页版**: http://localhost:8000
 - **API文档**: http://localhost:8000/docs
 
+## 📱 安卓App构建
+
+### 前置要求
+
+1. 安装 Android SDK（推荐通过 Android Studio 安装）
+2. 设置环境变量 `ANDROID_HOME` 或 `ANDROID_SDK_ROOT`
+3. 确保 `d8` 和 `aapt2` 工具在 PATH 中
+
+### 构建步骤
+
+```bash
+# 进入安卓目录
+cd android-app
+
+# 使用构建脚本（推荐）
+./build.sh
+
+# 或手动构建
+# 1. 编译资源
+aapt2 compile --dir app/src/main/res -o build/resources.zip
+aapt2 link -o build/apk/base.apk -I $ANDROID_HOME/platforms/android-34/android.jar \
+  --manifest app/src/main/AndroidManifest.xml build/resources.zip
+
+# 2. 编译Java代码
+javac -source 1.8 -target 1.8 -bootclasspath $ANDROID_HOME/platforms/android-34/android.jar \
+  -d build/obj app/src/main/java/com/chat/platform/*.java
+
+# 3. 转换为DEX
+d8 --output build/apk/ build/obj/**/*.class
+
+# 4. 打包APK
+# ... (详见build.sh脚本)
+```
+
+### 安装APK
+
+构建完成后，APK文件位于 `android-app/output/聊天平台.apk`，可以通过以下方式安装：
+
+1. **USB安装**: 连接手机，启用USB调试，运行 `adb install output/聊天平台.apk`
+2. **文件传输**: 将APK文件传输到手机，点击安装
+
+### 自定义配置
+
+编辑 `android-app/app/src/main/java/com/chat/platform/MainActivity.java` 中的服务器地址：
+
+```java
+// 修改为你的服务器地址
+private static final String SERVER_URL = "http://your-server-ip:8000";
+```
+
+## 🖥️ Electron桌面版构建
+
+### 前置要求
+
+1. 安装 Node.js 和 npm
+2. 安装 Electron 依赖
+
+### 构建步骤
+
+```bash
+# 进入Electron目录
+cd electron
+
+# 安装依赖
+npm install
+
+# 构建Windows版本
+npm run build-win
+
+# 或使用手动打包脚本
+./build-manual.ps1
+```
+
+## 🔧 配置说明
+
+### 环境变量
+
+可以通过环境变量配置：
+
+```bash
+# 数据库URL（默认SQLite）
+DATABASE_URL=sqlite+aiosqlite:///./chat.db
+
+# JWT密钥（建议修改）
+SECRET_KEY=your-secret-key-here
+
+# 管理员密码（默认admin123456）
+ADMIN_PASSWORD=your-admin-password
+
+# 存储大小限制（默认10GB）
+MAX_STORAGE_SIZE=10737418240
+
+# 允许的CORS来源（默认*）
+ALLOWED_ORIGINS=http://localhost:8000,https://your-domain.com
+```
+
+### 修改配置
+
+编辑 `backend/app/database.py` 修改数据库配置
+编辑 `backend/app/auth.py` 修改JWT密钥
+编辑 `backend/app/cleanup.py` 修改清理策略
+
+## 🐛 常见问题
+
+### 1. 端口被占用
+```bash
+# 查找占用端口的进程
+lsof -i :8000
+
+# 杀死进程
+kill -9 <PID>
+```
+
+### 2. 数据库损坏
+```bash
+# 删除数据库文件重新开始
+rm chat.db
+```
+
+### 3. 权限问题
+```bash
+# 确保storage目录有写权限
+chmod -R 755 storage/
+```
+
+### 4. 安卓App无法连接服务器
+
+1. 确保手机和服务器在同一网络
+2. 检查服务器防火墙是否开放端口
+3. 使用服务器的局域网IP地址（不是localhost）
+4. 确保服务器启动时绑定 `0.0.0.0`
+
+### 5. Electron桌面版白屏
+
+1. 检查服务器是否正常运行
+2. 确认Electron配置中的服务器地址正确
+3. 查看控制台错误信息
+
 ## 📝 开发说明
 
 ### 核心功能
@@ -169,52 +313,6 @@ docker-compose logs -f
 - **SQLite数据库**: 轻量级，无需额外安装
 - **JWT认证**: 安全的用户认证机制
 - **自动清理**: 防止存储空间溢出
-
-## 🔧 配置说明
-
-### 环境变量
-
-可以通过环境变量配置：
-
-```bash
-# 数据库URL（默认SQLite）
-DATABASE_URL=sqlite+aiosqlite:///./chat.db
-
-# JWT密钥（建议修改）
-SECRET_KEY=your-secret-key-here
-
-# 存储大小限制（默认10GB）
-MAX_STORAGE_SIZE=10737418240
-```
-
-### 修改配置
-
-编辑 `backend/app/database.py` 修改数据库配置
-编辑 `backend/app/auth.py` 修改JWT密钥
-编辑 `backend/app/cleanup.py` 修改清理策略
-
-## 🐛 常见问题
-
-### 1. 端口被占用
-```bash
-# 查找占用端口的进程
-lsof -i :8000
-
-# 杀死进程
-kill -9 <PID>
-```
-
-### 2. 数据库损坏
-```bash
-# 删除数据库文件重新开始
-rm chat.db
-```
-
-### 3. 权限问题
-```bash
-# 确保storage目录有写权限
-chmod -R 755 storage/
-```
 
 ## 📄 许可证
 
