@@ -6,8 +6,8 @@ from .database import async_session, Message
 
 # 存储目录
 STORAGE_DIR = "storage"
-# 最大存储大小 (10GB)
-MAX_STORAGE_SIZE = 10 * 1024 * 1024 * 1024
+# 最大存储大小 (20GB)
+MAX_STORAGE_SIZE = 20 * 1024 * 1024 * 1024
 
 async def get_storage_size():
     """获取存储目录总大小"""

@@ -159,9 +159,9 @@ async function uploadFile(e) {
   const file = e.target.files[0];
   if (!file) return;
   
-  // 检查文件大小 (10MB)
-  if (file.size > 10 * 1024 * 1024) {
-    alert('文件大小不能超过10MB');
+  // 检查文件大小 (3GB)
+  if (file.size > 3 * 1024 * 1024 * 1024) {
+    alert('文件大小不能超过3GB');
     return;
   }
   

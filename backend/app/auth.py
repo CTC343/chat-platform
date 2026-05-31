@@ -81,3 +81,12 @@ async def get_current_admin(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="需要管理员权限")
     return current_user
+
+# 验证 token（返回用户名，用于 query 参数方式）
+def verify_token(token: str) -> Optional[str]:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        return username
+    except JWTError:
+        return None

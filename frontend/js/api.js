@@ -136,7 +136,43 @@ class ApiService {
 
   // 获取文件下载URL
   getFileUrl(messageId) {
-    return `${API_BASE}/messages/file/${messageId}`;
+    return `${API_BASE}/messages/file/${messageId}?token=${this.token}`;
+  }
+
+  // 获取所有用户（私密消息用）
+  async getAllUsers() {
+    return this.request('/users/all');
+  }
+
+  // 禁言/解禁用户
+  async muteUser(userId, muted) {
+    return this.request('/users/mute', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, muted })
+    });
+  }
+
+  // 注销用户（管理员）
+  async deleteUser(userId) {
+    return this.request('/users/delete', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId })
+    });
+  }
+
+  // 获取用户消息
+  async getUserMessages(userId) {
+    return this.request(`/messages/user/${userId}`);
+  }
+
+  // 获取我的消息
+  async getMyMessages() {
+    return this.request('/messages/my');
+  }
+
+  // 自行注销
+  async selfDelete() {
+    return this.request('/users/self-delete', { method: 'POST' });
   }
 
   // 获取所有消息（管理员）

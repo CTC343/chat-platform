@@ -12,8 +12,8 @@ from ..auth import get_current_active_user, get_current_admin
 
 router = APIRouter(prefix="/messages", tags=["消息"])
 
-# 最大文件大小 (10MB)
-MAX_FILE_SIZE = 10 * 1024 * 1024
+# 最大文件大小 (3GB)
+MAX_FILE_SIZE = 3 * 1024 * 1024 * 1024
 
 # 允许的文件类型
 ALLOWED_EXTENSIONS = {
@@ -30,18 +30,28 @@ async def get_latest_messages(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    # 查询公开消息和当前用户相关的私密消息
+    # 新注册用户只能看到注册之后的消息
+    from sqlalchemy import and_
+    from datetime import timedelta
+    
+    # 给用户注册时间减去1秒，确保能看到注册时刻的消息
+    user_created = current_user.created_at - timedelta(seconds=1)
+    
     query = (
         select(Message)
         .options(selectinload(Message.sender))
         .where(
-            or_(
-                Message.visibility == MessageVisibility.PUBLIC,
-                and_(
-                    Message.visibility == MessageVisibility.PRIVATE,
-                    or_(
-                        Message.sender_id == current_user.id,
-                        Message.receiver_id == current_user.id
+            and_(
+                # 只显示注册时间之后的消息
+                Message.created_at >= user_created,
+                or_(
+                    Message.visibility == MessageVisibility.PUBLIC,
+                    and_(
+                        Message.visibility == MessageVisibility.PRIVATE,
+                        or_(
+                            Message.sender_id == current_user.id,
+                            Message.receiver_id == current_user.id
+                        )
                     )
                 )
             )
@@ -63,6 +73,10 @@ async def send_message(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
+    # 检查是否被禁言
+    if current_user.muted:
+        raise HTTPException(status_code=403, detail="你已被禁言，无法发送消息")
+    
     # 如果是私密消息，检查接收者是否存在
     if message.visibility == MessageVisibility.PRIVATE and message.receiver_id:
         result = await db.execute(select(User).where(User.id == message.receiver_id))
@@ -104,7 +118,7 @@ async def upload_file(
     # 检查文件大小
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="文件大小超过限制（最大10MB）")
+        raise HTTPException(status_code=413, detail="文件大小超过限制（最大3GB）")
     
     # 检查文件类型
     file_ext = os.path.splitext(file.filename)[1].lower() if file.filename else ""
@@ -150,9 +164,16 @@ async def upload_file(
 @router.get("/file/{message_id}")
 async def get_file_data(
     message_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    token: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
 ):
+    # 支持从 query 参数获取 token
+    if token:
+        from ..auth import verify_token
+        username = verify_token(token)
+        if not username:
+            raise HTTPException(status_code=401, detail="无效的Token")
+    
     result = await db.execute(select(Message).where(Message.id == message_id))
     message = result.scalar_one_or_none()
     
@@ -208,3 +229,33 @@ async def delete_message(
     await db.commit()
     
     return {"message": "消息删除成功"}
+
+# 管理员：获取指定用户的消息
+@router.get("/user/{user_id}")
+async def get_user_messages(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    result = await db.execute(
+        select(Message)
+        .options(selectinload(Message.sender))
+        .where(Message.sender_id == user_id)
+        .order_by(Message.created_at.desc())
+    )
+    messages = result.scalars().all()
+    return [{"id": m.id, "sender_id": m.sender_id, "receiver_id": m.receiver_id, "content": m.content, "message_type": m.message_type, "file_path": m.file_path, "visibility": m.visibility, "created_at": str(m.created_at), "sender": {"id": m.sender.id, "username": m.sender.username, "nickname": m.sender.nickname, "status": m.sender.status, "role": m.sender.role}} for m in messages]
+
+# 获取自己的所有发言
+@router.get("/my")
+async def get_my_messages(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    result = await db.execute(
+        select(Message)
+        .where(Message.sender_id == current_user.id)
+        .order_by(Message.created_at.desc())
+    )
+    messages = result.scalars().all()
+    return [{"id": m.id, "sender_id": m.sender_id, "receiver_id": m.receiver_id, "content": m.content, "message_type": m.message_type, "file_path": m.file_path, "visibility": m.visibility, "created_at": str(m.created_at)} for m in messages]

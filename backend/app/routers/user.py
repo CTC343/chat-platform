@@ -152,3 +152,73 @@ async def init_admin(db: AsyncSession = Depends(get_db)):
     await db.commit()
     
     return {"message": "管理员创建成功"}
+
+# 获取所有用户（用于管理面板和私密消息选择）
+@router.get("/all")
+async def get_all_users(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    result = await db.execute(select(User))
+    users = result.scalars().all()
+    return [{"id": u.id, "username": u.username, "nickname": u.nickname, "avatar": u.avatar, "role": u.role, "muted": u.muted, "status": u.status, "created_at": str(u.created_at)} for u in users]
+
+# 管理员：禁言/解禁用户
+@router.post("/mute")
+async def mute_user(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    user_id = data.get("user_id")
+    muted = data.get("muted", 1)
+    
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if user.role == UserRole.ADMIN:
+        raise HTTPException(status_code=400, detail="不能禁言管理员")
+    
+    user.muted = muted
+    await db.commit()
+    await db.refresh(user)
+    
+    return {"id": user.id, "username": user.username, "nickname": user.nickname, "muted": user.muted}
+
+# 管理员：注销用户
+@router.post("/delete")
+async def delete_user(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    user_id = data.get("user_id")
+    
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if user.role == UserRole.ADMIN:
+        raise HTTPException(status_code=400, detail="不能注销管理员")
+    
+    # 删除该用户的所有消息
+    from ..database import Message
+    msg_result = await db.execute(select(Message).where(Message.sender_id == user_id))
+    messages = msg_result.scalars().all()
+    for msg in messages:
+        await db.delete(msg)
+    
+    await db.delete(user)
+    await db.commit()
+    
+    return {"message": f"用户 {user.username} 已注销"}
+
+# 用户自行注销（显示彩蛋）
+@router.post("/self-delete")
+async def self_delete(
+    current_user: User = Depends(get_current_active_user)
+):
+    return {"message": "进来了还想走？", "code": "no_exit"}

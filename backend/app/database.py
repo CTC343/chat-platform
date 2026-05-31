@@ -48,6 +48,7 @@ class User(Base):
     avatar = Column(String(500), nullable=True)
     status = Column(String(20), default=UserStatus.PENDING)
     role = Column(String(20), default=UserRole.USER)
+    muted = Column(Integer, default=0)  # 0=正常, 1=禁言
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

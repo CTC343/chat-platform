@@ -36,3 +36,45 @@ node_modules/
 
 # Docker
 docker-compose.override.yml
+
+# Test files
+backend/test_*.py
+backend/full_test.py
+
+# Build artifacts
+$outDir/
+android-app/build/
+android-app/output/
+electron/dist/
+electron/dist-manual/
+electron/build-log.txt
+backend/$sdkDir/
+
+# Temporary files
+优化.txt
+新要求.txt
+聊天.txt
+
+# Documentation (keep README.md)
+*.docx
+
+# Electron build scripts (keep package.json)
+electron/build-exe.js
+electron/build-manual.ps1
+electron/build.cmd
+
+# Manim demo (not part of main project)
+manim_demo/
+
+# Android build scripts
+setup-android.ps1
+
+# Gradle cache
+android-app/.gradle/
+android-app/local.properties
+
+# Debug keystore (regenerated)
+android-app/debug.keystore
+
+# Project requirements document (local only)
+聊天.md

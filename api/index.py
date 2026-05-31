@@ -264,10 +264,14 @@ async def approve(approval: UserApproval, db: Session = Depends(get_db), admin: 
 @app.get("/messages/latest")
 async def get_messages(limit: int = 50, db: Session = Depends(get_db), user: User = Depends(get_active_user)):
     from sqlalchemy import or_, and_
+    # 新注册用户只能看到注册之后的消息
     messages = db.query(Message).filter(
-        or_(
-            Message.visibility == "public",
-            and_(Message.visibility == "private", or_(Message.sender_id == user.id, Message.receiver_id == user.id))
+        and_(
+            Message.created_at >= user.created_at,
+            or_(
+                Message.visibility == "public",
+                and_(Message.visibility == "private", or_(Message.sender_id == user.id, Message.receiver_id == user.id))
+            )
         )
     ).order_by(Message.created_at.desc()).limit(limit).all()
     messages.reverse()
@@ -286,8 +290,8 @@ async def get_messages(limit: int = 50, db: Session = Depends(get_db), user: Use
 @app.post("/messages/upload")
 async def upload_file(file: UploadFile = File(...), visibility: str = "public", receiver_id: Optional[int] = None, db: Session = Depends(get_db), user: User = Depends(get_active_user)):
     content = await file.read()
-    if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(413, "文件大小超过限制")
+    if len(content) > 3 * 1024 * 1024 * 1024:
+        raise HTTPException(413, "文件大小超过限制（最大3GB）")
     ext = os.path.splitext(file.filename)[1].lower() if file.filename else ""
     msg_type = "file"
     if ext in [".jpg", ".jpeg", ".png", ".gif", ".webp"]: msg_type = "image"
@@ -341,11 +345,11 @@ async def admin_delete_message(message_id: int, db: Session = Depends(get_db), a
 
 # ========== 新增功能 ==========
 
-# 获取所有已审核用户（用于私密消息选择）
+# 获取所有用户（用于管理面板和私密消息选择）
 @app.get("/users/all")
 async def get_all_users(db: Session = Depends(get_db), user: User = Depends(get_active_user)):
-    users = db.query(User).filter(User.status == "approved").all()
-    return [{"id": u.id, "username": u.username, "nickname": u.nickname, "avatar": u.avatar, "role": u.role, "muted": u.muted} for u in users]
+    users = db.query(User).all()
+    return [{"id": u.id, "username": u.username, "nickname": u.nickname, "avatar": u.avatar, "role": u.role, "muted": u.muted, "status": u.status, "created_at": str(u.created_at)} for u in users]
 
 # 禁言/解禁用户（管理员）
 @app.post("/users/mute")

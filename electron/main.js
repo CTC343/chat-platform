@@ -20,8 +20,8 @@ function createWindow() {
     title: '聊天平台'
   });
 
-  // 加载应用的 index.html
-  mainWindow.loadFile('index.html');
+  // 加载应用 - 使用公网地址（别人也能用）
+  mainWindow.loadURL('https://lodge-salmon-stops-brochure.trycloudflare.com/chat.html');
 
   // 打开开发者工具（开发时）
   // mainWindow.webContents.openDevTools();
